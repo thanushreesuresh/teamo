@@ -256,7 +256,8 @@ flutter build apk --release
 
 | Name | Role |
 |------|------|
-| Thanushree Suresh | Flutter Developer, UI/UX, AI Integration |
+| Thanushree Suresh | Flutter Developer, AI Integration (Groq/Companion Mode), Backend (Supabase) |
+| Merin Elizabeth Edgar | UI/UX Design, Frontend Screens, Feature Implementation |
 
 ---
 
