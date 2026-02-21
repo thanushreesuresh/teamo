@@ -8,6 +8,7 @@ import '../widgets/miss_you_widget.dart';
 import '../widgets/friendship_lamp_widget.dart';
 import 'shared_diary_screen.dart';
 import 'time_capsule_screen.dart';
+import 'companion_chat_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String pairId;
@@ -22,8 +23,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _service = SupabaseService();
   final _auth = AuthService();
   PairModel? _pair;
+  String? _partnerName;          // display name of the other user
   bool _loading = true;
   RealtimeChannel? _channel;
+
+  // Optimistic local overrides – applied immediately on user interaction
+  // and cleared once the realtime update confirms the new value.
+  String? _myMoodOverride;
+  String? _myLampOverride;
+  int _missYouDelta = 0; // taps not yet reflected from server
 
   @override
   void initState() {
@@ -35,10 +43,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadPair() async {
     try {
       final pair = await _service.getPair(widget.pairId);
-      if (mounted) setState(() {
-        _pair = pair;
-        _loading = false;
-      });
+
+      // Load partner's profile to get their display name.
+      String? partnerName;
+      if (pair != null) {
+        final currentId = _service.currentUserId;
+        final partnerId =
+            pair.user1Id == currentId ? pair.user2Id : pair.user1Id;
+        if (partnerId != null) {
+          final partnerProfile = await _service.getProfile(partnerId);
+          partnerName =
+              partnerProfile?.displayName ?? partnerProfile?.email;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _pair = pair;
+          _partnerName = partnerName;
+          _loading = false;
+          _missYouDelta = 0;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
     }
@@ -47,30 +73,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _subscribeRealtime() {
     _channel = _service.subscribeToPair(widget.pairId, (data) {
       if (mounted) {
-        setState(() => _pair = PairModel.fromMap(data));
+        setState(() {
+          _pair = PairModel.fromMap(data);
+          // Server echoed back our updates — clear local overrides.
+          _myMoodOverride = null;
+          _myLampOverride = null;
+          _missYouDelta = 0;
+        });
+        // If partner just joined (user2 first appearance), reload to get name.
+        if (_partnerName == null) _loadPair();
       }
     });
   }
 
   bool get _isUser1 => _pair?.user1Id == _service.currentUserId;
 
-  String? get _myMood => _isUser1 ? _pair?.mood1 : _pair?.mood2;
+  String? get _myMood =>
+      _myMoodOverride ?? (_isUser1 ? _pair?.mood1 : _pair?.mood2);
   String? get _partnerMood => _isUser1 ? _pair?.mood2 : _pair?.mood1;
   String? get _myLampColor =>
-      _isUser1 ? _pair?.lampColor1 : _pair?.lampColor2;
+      _myLampOverride ?? (_isUser1 ? _pair?.lampColor1 : _pair?.lampColor2);
   String? get _partnerLampColor =>
       _isUser1 ? _pair?.lampColor2 : _pair?.lampColor1;
+  int get _missYouCount => (_pair?.missYouCount ?? 0) + _missYouDelta;
 
   Future<void> _onMoodSelected(String mood) async {
-    await _service.updateMood(widget.pairId, mood);
+    // Optimistic update.
+    setState(() => _myMoodOverride = mood);
+    try {
+      await _service.updateMood(widget.pairId, mood);
+    } catch (e) {
+      // Revert on error.
+      if (mounted) setState(() => _myMoodOverride = null);
+    }
   }
 
   Future<void> _onMissYou() async {
-    await _service.incrementMissYou(widget.pairId);
+    // Optimistic update.
+    setState(() => _missYouDelta++);
+    try {
+      await _service.incrementMissYou(widget.pairId);
+    } catch (e) {
+      if (mounted) setState(() => _missYouDelta = (_missYouDelta - 1).clamp(0, 999));
+    }
   }
 
   Future<void> _onLampColorSelected(String colorHex) async {
-    await _service.updateLampColor(widget.pairId, colorHex);
+    // Optimistic update.
+    setState(() => _myLampOverride = colorHex);
+    try {
+      await _service.updateLampColor(widget.pairId, colorHex);
+    } catch (e) {
+      if (mounted) setState(() => _myLampOverride = null);
+    }
   }
 
   @override
@@ -124,18 +179,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
                 child: Row(
                   children: [
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [Color(0xFFFF6B9D), Color(0xFF6C63FF)],
-                      ).createShader(bounds),
-                      child: const Text(
-                        'Tiamo',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [Color(0xFFFF6B9D), Color(0xFF6C63FF)],
+                          ).createShader(bounds),
+                          child: const Text(
+                            'Tiamo',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (_partnerName != null)
+                          Text(
+                            '💕 ${ _partnerName!}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.pink.shade400,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          )
+                        else if (_pair!.isPaired)
+                          Text(
+                            '💕 Partner connected',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.pink.shade400,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
                     ),
                     const Spacer(),
                     Container(
@@ -152,7 +230,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         tooltip: 'Sign Out',
                         onPressed: () async {
-                          await _auth.signOut();
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20)),
+                              title: const Text('Sign Out'),
+                              content: const Text(
+                                  'Are you sure you want to sign out?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, true),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor:
+                                        const Color(0xFFFF6B9D),
+                                  ),
+                                  child: const Text('Sign Out'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            await _auth.signOut();
+                          }
                         },
                       ),
                     ),
@@ -212,7 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                       // Miss You
                       MissYouWidget(
-                        count: _pair!.missYouCount,
+                        count: _missYouCount,
                         onTap: _onMissYou,
                       ),
                       const SizedBox(height: 12),
@@ -222,6 +328,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         myColor: _myLampColor,
                         partnerColor: _partnerLampColor,
                         onColorSelected: _onLampColorSelected,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Companion Mode card
+                      _CompanionCard(
+                        partnerName: _partnerName ?? 'your partner',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CompanionChatScreen(
+                              partnerName: _partnerName ?? 'your partner',
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 20),
 
@@ -321,6 +441,104 @@ class _NavCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                     color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Companion Mode Card ────────────────────────────────────────────────────────
+
+class _CompanionCard extends StatelessWidget {
+  final String partnerName;
+  final VoidCallback onTap;
+
+  const _CompanionCard({required this.partnerName, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C63FF), Color(0xFFD63AF9)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Text('🤖', style: TextStyle(fontSize: 24)),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Companion Mode',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          'AI',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Chat with an AI while $partnerName is away',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
           ],
         ),
       ),

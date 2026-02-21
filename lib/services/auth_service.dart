@@ -12,7 +12,8 @@ class AuthService {
   User? get currentUser => _client.auth.currentUser;
   bool get isLoggedIn => currentUser != null;
 
-  Future<AuthResponse> signUp(String email, String password) async {
+  Future<AuthResponse> signUp(String email, String password,
+      {String? displayName}) async {
     final response = await _client.auth.signUp(
       email: email,
       password: password,
@@ -23,6 +24,7 @@ class AuthService {
         await _supabaseService.upsertProfile(
           userId: response.user!.id,
           email: email,
+          displayName: displayName,
         );
       } catch (_) {
         // Table may not exist yet — profile will be created lazily

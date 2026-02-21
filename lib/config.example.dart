@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────────────────
-// Copy this file to config.dart and fill in your Supabase credentials.
-// Find them at: https://supabase.com/dashboard → Settings → API
+// Copy .env.example → .env and fill in your credentials.
+// Supabase: https://supabase.com/dashboard → Settings → API
+// Groq:     https://console.groq.com/keys
 // ──────────────────────────────────────────────────────────
-const String supabaseUrl = 'YOUR_SUPABASE_URL';
-const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+//
+// config.dart is auto-generated from .env via flutter_dotenv.
+// See lib/config.dart for the getter definitions.
