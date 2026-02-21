@@ -172,9 +172,7 @@ graph TB
 
 ##  Demo Video
 
-> **[ Watch Demo Video](https://youtu.be/YOUR_DEMO_LINK)**
->
-> *(Replace with your actual demo video link — max 3 minutes, showing all features)*
+> **[▶ Watch Demo Video](https://drive.google.com/drive/folders/1EUQL-rI0mzvvFd7kgniL1z4CQpdMsxdR)**
 
 ---
 
@@ -256,8 +254,8 @@ flutter build apk --release
 
 | Name | Role |
 |------|------|
-| Thanushree Suresh | Flutter Developer, AI Integration (Groq/Companion Mode), Backend (Supabase) |
-| Merin Elizabeth Edgar | UI/UX Design, Frontend Screens, Feature Implementation |
+| Thanushree Suresh | Flutter Developer, AI Integration (Groq/Companion Mode), Frontend Screens |
+| Merin Elizabeth Edgar | Backend (Supabase), UI/UX Design, Feature Implementation |
 
 ---
 
